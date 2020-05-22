@@ -1,0 +1,143 @@
+#include <LiquidCrystal.h>
+#include <Keypad.h>
+int led = 23; // pin of the led
+const int rs = 13, en = 12, d4 = 11, d5 = 10, d6 = 9, d7 = 8;// this defines the pins for the LCD
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7); //Initialize LCD
+
+const byte rows = 4; //four rows
+const byte cols = 3; //three columns
+char keys[rows][cols] = {
+  {'1','2','3'},
+  {'4','5','6'},
+  {'7','8','9'},
+  {'*','0','#'}
+};
+byte rowPins[rows] = {4, 3, 2, 1}; //connect to the row pinouts of the keypad
+byte colPins[cols] = {5, 6, 7}; //connect to the column pinouts of the keypad
+Keypad keypad = Keypad(makeKeymap(keys),rowPins,colPins,rows,cols);
+
+#define F_CPU 8000000u1 //Defines CPU clockspeed (I think)
+volatile unsigned int count=0;  //Volatile integer without sign
+int c=0;
+int Time[] = {-1, -1, -1};
+int i=0;
+int Time2=0;
+int Seg=0;
+int Min=0;
+
+void setup() {
+  lcd.begin(16,2);
+  
+  TCNT2=0; //Timer/counter register: 8 bit register whose job is countig up. It can reach a maximum value of 255 after which it overflows and resets itself.
+  TIMSK2=B00000001; // Timer/counter2 interrupt mask register: This register lets us choose how we want to use the timer (Compare A, compare B or Overflow). Here is set for overflow.
+  TCCR2B=B00000100; //Timer/counter control tregister B: This is the prescaler register. It lets us choose the desired preescaling factor (Here is supposedly set for a 64 preescaler)
+  sei(); //This function enables global interrupts (and supposedly allows for register writting).It should, in theory, let us skip over the process of disabling and then enabling the SREG register.
+  
+  
+}
+
+
+void loop() {
+
+char key = keypad.getKey(); //Get value from keypad
+
+  if (key){
+    if(c<3 && isDigit(key)){
+    i=(key - '0');
+    Time[c]=i;                                           //The value of the pressed letters of the keypad are stored on 
+     c=c+1;                                             //c is a counter that makes it so only a 3-digit number may be allowed as input
+     if (c==3){lcd.clear(); lcd.print("Press enter");}  //once the maximum number of posible digits is entered the lcd displays "press enter"
+    } else if(key=='*'){
+      if(Time[2]==-1){Time2=10*(Time[0])+Time[1];}else{Time2=60*(Time[0])+10*(Time[1])+Time[2];} //The actual time eneterd is calculated in seconds
+      if (Time2>59){
+        Seg=Time2%60;
+        Min=int((Time2-Seg)/60);
+      }else{                      //The time is displayed as  a min:seconds format
+        Min=0;
+        Seg=Time2;
+      }
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("The Time is:");
+      lcd.setCursor(0,1);
+      lcd.print(Min);
+      lcd.print(":");   //After the countdown starts all other variables are reset
+      lcd.print(Seg);
+      Min=0;
+      Seg=0;
+      Time[0] = 0;
+      Time[1] = 0;
+      Time[2] = 0;
+      } else if(key=='#'){
+            Time[0] = -1;
+            Time[1] = -1;
+            Time[2] = -1;      //If the cancel button is pressed then all variables are reset
+            Time2=0;           //and the lcd displays the word "cancelled"   
+            c=0;
+            Seg=0;
+            Min=0;
+            lcd.clear();
+            lcd.print("Cancelled");
+            delay(100);
+            lcd.clear();
+      }  
+    }
+
+
+    if(Time[1]>5 && Time[2]!=-1){  // The number of seconds entered cannot be greater than 59. Therefore, when that occurs an error message is given
+    lcd.clear();                   //subsequently all variables are reset
+    lcd.setCursor(0,0);
+    lcd.print("Invalid time");
+    lcd.setCursor(0,1);
+    lcd.print("Try again");
+    Time[0] = -1;
+    Time[1] = -1;
+    Time[2] = -1;
+    c=0;
+    Seg=0;
+    Min=0;
+    delay(100);
+    lcd.clear();
+  }
+
+  if (c<3 && Time2==0){  //Whenever microwave is not being currently used it just displays this message
+    lcd.setCursor(0,0);
+    lcd.print("Enter time range");
+    lcd.setCursor(0,1);
+    lcd.print("from 0 to 9:59");
+    }
+
+  
+
+}
+
+ISR(TIMER2_OVF_vect){ //Global interrupt function. Notice that it must include the "TIMER2_OVF_vect" sentence, since it specifies the interrupt's origin and nature. 
+
+  if(Time2==0){count=0;}
+
+  if(Time2>0){
+    
+  count=count+1; //Inner counter triggered by the interrupt 
+  
+
+  if (count>=60){   //I had calculated that the counter had to reach 490 in order to account for a second. However, according to experimental data on proteus, reaching up to 60 is better. 
+    count=0;        
+    Time2=Time2-1;
+    if (Time2>59){    //During each interruption the variable Time2 is  substracts one of itself.
+        Seg=Time2%60; //Then the number of minutes and seconds is calculated as before.
+        Min=int((Time2-Seg)/60);
+      }else{
+        Min=0;
+        Seg=Time2;
+      }
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("The Time is:");
+      lcd.setCursor(0,1);
+      lcd.print(Min);
+      lcd.print(":");        //The microwave displays time  in a minute:seconds format
+      lcd.print(Seg);
+      if(Time2==1){c=0;}    //when only on second is pending the variable c is reset
+    }
+  }
+  }
